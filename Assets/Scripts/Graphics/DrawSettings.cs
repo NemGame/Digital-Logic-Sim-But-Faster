@@ -148,7 +148,7 @@ namespace DLS.Graphics
 				ChipButton = MakeButtonTheme(fontRegular, MakeCol255(48), MakeCol255(225), Color.white, Color.white, Color.black, Color.black),
 				MainMenuButtonTheme = MakeButtonTheme(fontRegular, MakeCol255(73, 73, 82), MakeCol255(72, 108, 233), MakeCol255(62, 116, 154), MakeCol255(228, 244, 255), Color.white, Color.white),
 				MenuButtonTheme = MakeButtonTheme(fontRegular, MakeCol255(67, 104, 149), MakeCol255(89, 159, 229), MakeCol255(117, 186, 224), MakeCol255(228, 244, 255), Color.white, Color.white),
-				MenuPopupButtonTheme = MakeButtonThemeFull(fontRegular, Color.white, MakeCol255(130, 190, 245), MakeCol255(145, 215, 245), MakeCol255(200), Color.black, Color.black, Color.black, inactiveTextol),
+				MenuPopupButtonTheme = MakeButtonThemeFull(fontRegular, Predefined.DarkGray, Predefined.LightGray, MakeCol255(145, 215, 245), MakeCol255(200), Color.white, Color.white, Color.white, inactiveTextol),
 
 				ChipLibraryCollectionToggleOff = MakeButtonTheme(fontRegular, MakeCol(0.066), MakeCol(0.87), chipLibraryCollectionHighlightCol, Color.white, Color.black, Color.black),
 				ChipLibraryCollectionToggleOn = MakeButtonThemeAuto(fontRegular, chipLibraryCollectionHighlightCol, Color.black),

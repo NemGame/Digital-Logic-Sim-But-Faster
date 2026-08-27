@@ -7,6 +7,7 @@ namespace Seb.Helpers
 {
 	public class ColHelper
 	{
+		private static readonly float Invert255 = 1f / 255f;
 		public static Color WithAlpha(Color col, float a) => new(col.r, col.g, col.b, a);
 
 		public static Color MakeCol(float value) => new(value, value, value, 1);
@@ -14,7 +15,7 @@ namespace Seb.Helpers
 		public static Color MakeCol(double r, double g, double b) => new((float)r, (float)g, (float)b, 1);
 		public static Color MakeCol255(int v) => MakeCol255(v, v, v, 255);
 		public static Color MakeCol255(int r, int g, int b) => MakeCol255(r, g, b, 255);
-		public static Color MakeCol255(int r, int g, int b, int a) => new(r / 255f, g / 255f, b / 255f, a / 255f);
+		public static Color MakeCol255(int r, int g, int b, int a) => new(r * Invert255, g * Invert255, b * Invert255, a * Invert255);
 
 		public static Color MakeCol(string hex)
 		{
@@ -88,6 +89,13 @@ namespace Seb.Helpers
 			s = Mathf.Clamp01(s + deltaS);
 			v = Mathf.Clamp01(v + deltaV);
 			return Color.HSVToRGB(h, s, v);
+		}
+
+		public static class Predefined
+		{
+			public static readonly Color DarkGray = ColHelper.MakeCol255(22);
+			public static readonly Color LightGray = ColHelper.MakeCol255(66);
+			public static readonly Color VeryWhite = ColHelper.MakeCol(0.6f);
 		}
 	}
 }

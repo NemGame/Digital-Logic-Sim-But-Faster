@@ -303,7 +303,7 @@ namespace DLS.Graphics
 					if (entry.Text == menuDividerString)
 					{
 						pos.y += 0.5f * dirY;
-						UI.DrawPanel(pos, new Vector2(menuWidth, 0.15f), ColHelper.MakeCol(0.6f), Anchor.CentreLeft);
+						UI.DrawPanel(pos, new Vector2(menuWidth, 0.15f), ColHelper.Predefined.VeryWhite, Anchor.CentreLeft);
 						pos.y += 0.5f * dirY;
 					}
 					else
@@ -321,7 +321,7 @@ namespace DLS.Graphics
 
 				Bounds2D bounds = UI.GetCurrentBoundsScope();
 				Vector2 menuSize = new(menuWidth, bounds.Height);
-				UI.ModifyPanel(panelID, bounds.Centre, menuSize + Vector2.one * 0.5f, ColHelper.MakeCol(0.91f));
+				UI.ModifyPanel(panelID, bounds.Centre, menuSize + Vector2.one * 0.5f, ColHelper.Predefined.DarkGray);
 			}
 
 			wasMouseOverMenu = UI.MouseInsideBounds(UI.PrevBounds);
