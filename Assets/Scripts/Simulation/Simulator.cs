@@ -63,17 +63,12 @@ namespace DLS.Simulation
 			// Step 1) Get player-controlled input states and copy values to the sim
 			foreach (DevPinInstance input in inputPins)
 			{
-				try
-				{
-					SimPin simPin = rootSimChip.GetSimPinFromAddress(input.Pin.Address);
-					PinState.Set(ref simPin.State, input.Pin.PlayerInputState);
+				if (rootSimChip.TryGetSimPinFromAddress(input.Pin.Address, out SimPin simPin))
+                {
+                    PinState.Set(ref simPin.State, input.Pin.PlayerInputState);
 
-					input.Pin.State = input.Pin.PlayerInputState;
-				}
-				catch (Exception)
-				{
-					// Possible for sim to be temporarily out of sync since running on separate threads, so just ignore failure to find pin.
-				}
+                    input.Pin.State = input.Pin.PlayerInputState;
+                }
 			}
 
 			// Process
@@ -99,12 +94,12 @@ namespace DLS.Simulation
 			}
 		}
 
-		static void UpdateAudioState()
+		static void UpdateAudioState()  // DONE: Optimize
 		{
 			double elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
 			if (simulationFrame <= 1) deltaTime = 0;
 			else deltaTime = elapsedSeconds - elapsedSecondsOld;
-			elapsedSecondsOld = stopwatch.Elapsed.TotalSeconds;
+			elapsedSecondsOld = elapsedSeconds;
 			audioState.NotifyAllNotesRegistered(deltaTime);
 		}
 
@@ -114,8 +109,8 @@ namespace DLS.Simulation
 			// Propagate signal from all input dev-pins to all their connected pins
 			chip.Sim_PropagateInputs();
 
-			// NOTE: subchips are assumed to have been sorted in reverse order of desired visitation
-			for (int i = chip.SubChips.Length - 1; i >= 0; i--)
+            // NOTE: subchips are assumed to have been sorted in reverse order of desired visitation
+            for (int i = chip.SubChips.Length - 1; i >= 0; i--)
 			{
 				SimChip nextSubChip = chip.SubChips[i];
 
@@ -173,6 +168,8 @@ namespace DLS.Simulation
 
 		static int ChooseNextSubChip(SimChip[] subChips, int num)
 		{
+			if (num <= 0) return -1;
+
 			bool noSubChipsReady = true;
 			bool isNonBusChipRemaining = false;
 			int nextSubChipIndex = -1;
@@ -194,7 +191,9 @@ namespace DLS.Simulation
 			// Step 4) if no sub chip is ready to be processed, pick one at random (but save buses for last)
 			if (noSubChipsReady)
 			{
-				nextSubChipIndex = rng.Next(0, num);
+				if (num == 0) return -1;
+
+				nextSubChipIndex = Simulator.RandomInt(0, num);
 
 				// If processing in random order, save buses for last (since we must know all their inputs to display correctly)
 				if (isNonBusChipRemaining)
@@ -217,10 +216,19 @@ namespace DLS.Simulation
 
 		public static bool RandomBool()
 		{
-			pcg_rngState = pcg_rngState * 747796405 + 2891336453;
-			uint result = ((pcg_rngState >> (int)((pcg_rngState >> 28) + 4)) ^ pcg_rngState) * 277803737;
+			return (uint)RandomInt() < uint.MaxValue / 2;
+		}
+		public static int RandomInt()
+        {
+            pcg_rngState = pcg_rngState * 747796405 + 2891336453;
+            uint result = ((pcg_rngState >> (int)((pcg_rngState >> 28) + 4)) ^ pcg_rngState) * 277803737;
 			result = (result >> 22) ^ result;
-			return result < uint.MaxValue / 2;
+			return (int)result;
+        }
+		public static int RandomInt(int min, int max)
+		{
+			if (max <= min) return min;
+			return min + (int)((uint)RandomInt() % (uint)(max - min));
 		}
 
 		static void ProcessBuiltinChip(SimChip chip)
@@ -638,30 +646,33 @@ namespace DLS.Simulation
 
 				if (modificationQueue.TryDequeue(out SimModifyCommand cmd))
 				{
-					if (cmd.type == SimModifyCommand.ModificationType.AddSubchip)
+					switch(cmd.type)
 					{
-						SimChip newSubChip = BuildSimChip(cmd.chipDesc, cmd.lib, cmd.subChipID, cmd.subChipInternalData);
-						cmd.modifyTarget.AddSubChip(newSubChip);
-					}
-					else if (cmd.type == SimModifyCommand.ModificationType.RemoveSubChip)
-					{
-						cmd.modifyTarget.RemoveSubChip(cmd.removeSubChipID);
-					}
-					else if (cmd.type == SimModifyCommand.ModificationType.AddConnection)
-					{
-						cmd.modifyTarget.AddConnection(cmd.sourcePinAddress, cmd.targetPinAddress);
-					}
-					else if (cmd.type == SimModifyCommand.ModificationType.RemoveConnection)
-					{
-						cmd.modifyTarget.RemoveConnection(cmd.sourcePinAddress, cmd.targetPinAddress); //
-					}
-					else if (cmd.type == SimModifyCommand.ModificationType.AddPin)
-					{
-						cmd.modifyTarget.AddPin(cmd.simPinToAdd, cmd.pinIsInputPin);
-					}
-					else if (cmd.type == SimModifyCommand.ModificationType.RemovePin)
-					{
-						cmd.modifyTarget.RemovePin(cmd.removePinID);
+						case SimModifyCommand.ModificationType.AddSubchip: {
+								SimChip newSubChip = BuildSimChip(cmd.chipDesc, cmd.lib, cmd.subChipID, cmd.subChipInternalData);
+								cmd.modifyTarget.AddSubChip(newSubChip);
+								break;
+							}
+						case SimModifyCommand.ModificationType.RemoveSubChip: {
+								cmd.modifyTarget.RemoveSubChip(cmd.removeSubChipID);
+								break;
+							}
+						case SimModifyCommand.ModificationType.AddConnection: {
+								cmd.modifyTarget.AddConnection(cmd.sourcePinAddress, cmd.targetPinAddress);
+								break;
+							}
+						case SimModifyCommand.ModificationType.RemoveConnection: {
+								cmd.modifyTarget.RemoveConnection(cmd.sourcePinAddress, cmd.targetPinAddress);
+								break;
+							}
+						case SimModifyCommand.ModificationType.AddPin: {
+								cmd.modifyTarget.AddPin(cmd.simPinToAdd, cmd.pinIsInputPin);
+								break;
+							}
+						case SimModifyCommand.ModificationType.RemovePin: {
+								cmd.modifyTarget.RemovePin(cmd.removePinID);
+								break;
+							}
 					}
 				}
 			}

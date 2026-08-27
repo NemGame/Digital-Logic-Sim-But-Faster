@@ -1,11 +1,15 @@
-using System;
-using System.Linq;
 using DLS.Description;
+using System;
+using System.Collections.Generic;
+using static Seb.Vis.Draw;
 
 namespace DLS.Simulation
 {
 	public class SimChip
 	{
+		// O(1) subchip lookup, built lazily on first use
+		Dictionary<int, SimChip> subChipById;
+
 		public readonly ChipType ChipType;
 		public readonly int ID;
 
@@ -115,92 +119,81 @@ namespace DLS.Simulation
 		public (bool success, SimChip chip) TryGetSubChipFromID(int id)
 		{
 			// Todo: address possible errors if accessing from main thread while being modified on sim thread?
-			foreach (SimChip s in SubChips)
+			if (subChipById == null)
 			{
-				if (s?.ID == id)
-				{
-					return (true, s);
-				}
+				subChipById = new Dictionary<int, SimChip>(SubChips.Length);
+				foreach (SimChip s in SubChips) subChipById[s.ID] = s;
 			}
-
+			if (subChipById.TryGetValue(id, out SimChip found)) return (true, found);
 			return (false, null);
 		}
 
 		public SimChip GetSubChipFromID(int id)
 		{
-			(bool success, SimChip chip) = TryGetSubChipFromID(id);
-			if (success) return chip;
-
+			if (subChipById == null)
+			{
+				subChipById = new Dictionary<int, SimChip>(SubChips.Length);
+				foreach (SimChip s in SubChips) subChipById[s.ID] = s;
+			}
+			if (subChipById.TryGetValue(id, out SimChip found)) return found;
 			throw new Exception("Failed to find subchip with id " + id);
 		}
 
-		public (SimPin pin, SimChip chip) GetSimPinFromAddressWithChip(PinAddress address)
+		public (SimPin pin, SimChip chip) GetSimPinFromAddressWithChip(PinAddress address, bool mayThrowError = true)
 		{
-			foreach (SimChip s in SubChips)
+			// Lazy-build the subchip dict on first lookup
+			if (subChipById == null)
 			{
-				if (s.ID == address.PinOwnerID)
-				{
-					foreach (SimPin pin in s.InputPins)
-					{
-						if (pin.ID == address.PinID) return (pin, s);
-					}
-
-					foreach (SimPin pin in s.OutputPins)
-					{
-						if (pin.ID == address.PinID) return (pin, s);
-					}
-				}
+				subChipById = new Dictionary<int, SimChip>(SubChips.Length);
+				foreach (SimChip s in SubChips) subChipById[s.ID] = s;
 			}
 
+			if (subChipById.TryGetValue(address.PinOwnerID, out SimChip subChip))
+			{
+				foreach (SimPin pin in subChip.InputPins)
+					if (pin.ID == address.PinID) return (pin, subChip);
+				foreach (SimPin pin in subChip.OutputPins)
+					if (pin.ID == address.PinID) return (pin, subChip);
+			}
+
+			// Own dev-pins — always a small array, linear scan is fastest
 			foreach (SimPin pin in InputPins)
-			{
 				if (pin.ID == address.PinOwnerID) return (pin, null);
-			}
-
 			foreach (SimPin pin in OutputPins)
-			{
 				if (pin.ID == address.PinOwnerID) return (pin, null);
-			}
 
-			throw new Exception("Failed to find pin with address: " + address.PinID + ", " + address.PinOwnerID);
+			if (mayThrowError) throw new Exception("Failed to find pin with address: " + address.PinID + ", " + address.PinOwnerID);
+			return (null, null);
 		}
 
 		public SimPin GetSimPinFromAddress(PinAddress address)
 		{
 			// Todo: address possible errors if accessing from main thread while being modified on sim thread?
-			foreach (SimChip s in SubChips)
-			{
-				if (s.ID == address.PinOwnerID)
-				{
-					foreach (SimPin pin in s.InputPins)
-					{
-						if (pin.ID == address.PinID) return pin;
-					}
 
-					foreach (SimPin pin in s.OutputPins)
-					{
-						if (pin.ID == address.PinID) return pin;
-					}
-				}
-			}
-
-			foreach (SimPin pin in InputPins)
-			{
-				if (pin.ID == address.PinOwnerID) return pin;
-			}
-
-			foreach (SimPin pin in OutputPins)
-			{
-				if (pin.ID == address.PinOwnerID) return pin;
-			}
-
-			throw new Exception("Failed to find pin with address: " + address.PinID + ", " + address.PinOwnerID);
+			return GetSimPinFromAddressWithChip(address).pin;
+		}
+		public bool TryGetSimPinFromAddress(PinAddress address, out SimPin pin)
+		{
+			(SimPin found, _) = GetSimPinFromAddressWithChip(address, mayThrowError: false);
+			pin = found;
+			return pin != null;
 		}
 
 
 		public void RemoveSubChip(int id)
 		{
-			SubChips = SubChips.Where(s => s.ID != id).ToArray();
+			int removeIndex = -1;
+			for (int i = 0; i < SubChips.Length; i++)
+			{
+				if (SubChips[i].ID == id) { removeIndex = i; break; }
+			}
+			if (removeIndex < 0) return;
+
+			for (int i = removeIndex; i < SubChips.Length - 1; i++)
+				SubChips[i] = SubChips[i + 1];
+
+			Array.Resize(ref SubChips, SubChips.Length - 1);
+			subChipById?.Remove(id);
 		}
 
 
@@ -222,14 +215,35 @@ namespace DLS.Simulation
 
 		public void RemovePin(int removePinID)
 		{
-			InputPins = InputPins.Where(p => p.ID != removePinID).ToArray();
-			OutputPins = OutputPins.Where(p => p.ID != removePinID).ToArray();
+			int removeIndex = -1;
+			for (int i = 0; i < InputPins.Length; i++)
+				if (InputPins[i].ID == removePinID) { removeIndex = i; break; }
+
+			if (removeIndex >= 0)
+			{
+				for (int i = removeIndex; i < InputPins.Length - 1; i++)
+					InputPins[i] = InputPins[i + 1];
+				Array.Resize(ref InputPins, InputPins.Length - 1);
+				return;
+			}
+
+			removeIndex = -1;
+			for (int i = 0; i < OutputPins.Length; i++)
+				if (OutputPins[i].ID == removePinID) { removeIndex = i; break; }
+
+			if (removeIndex >= 0)
+			{
+				for (int i = removeIndex; i < OutputPins.Length - 1; i++)
+					OutputPins[i] = OutputPins[i + 1];
+				Array.Resize(ref OutputPins, OutputPins.Length - 1);
+			}
 		}
 
 		public void AddSubChip(SimChip subChip)
 		{
 			Array.Resize(ref SubChips, SubChips.Length + 1);
 			SubChips[^1] = subChip;
+			subChipById[subChip.ID] = subChip;
 		}
 
 		public void AddConnection(PinAddress sourcePinAddress, PinAddress targetPinAddress)
@@ -265,6 +279,7 @@ namespace DLS.Simulation
 					SimPin[] newArray = new SimPin[sourcePin.ConnectedTargetPins.Length - 1];
 					Array.Copy(sourcePin.ConnectedTargetPins, 0, newArray, 0, i);
 					Array.Copy(sourcePin.ConnectedTargetPins, i + 1, newArray, i, sourcePin.ConnectedTargetPins.Length - i - 1);
+
 					sourcePin.ConnectedTargetPins = newArray;
 
 					removeTargetPin.numInputConnections -= 1;
